@@ -12,6 +12,7 @@ ITMO | COURSE | Computer Vision Advanced
 
 **Install  environment**
 1. Make sure you already have Poetry installed on your system
-2. `poetry install`
-3. `poetry shell`
-4. `pre-commit install`
+2. Make sure you use Python3.12
+3. `poetry install`
+4. `poetry shell`
+5. `pre-commit install`
