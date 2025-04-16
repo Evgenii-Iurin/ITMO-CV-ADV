@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "itmo-cv-adv"
+version = "0.1.0"
+description = ""
+authors =  ["Evgenii Iurin <iurin.evgenii@gmail.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10"
+pre-commit = "^4.2.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
