@@ -27,35 +27,37 @@ transform = T.Compose(
     ]
 )
 
-train_dataset = CustomDataset(root_dir="dataset/train", transform=transform)
-val_dataset = CustomDataset(root_dir="dataset/val", transform=transform)
+if __name__ == "__main__":
+    train_dataset = CustomDataset(
+        root_dir="src/hw_yolo/dataset/train", transform=transform
+    )
+    val_dataset = CustomDataset(root_dir="src/hw_yolo/dataset/val", transform=transform)
 
-train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-sample_img, sample_label = train_dataset[1]
+    sample_img, sample_label = train_dataset[1]
 
-logging.info("Total number of images in the dataset: %d", len(train_dataset))
-logging.info("Image size after transformation: %s", sample_img.shape)
-logging.info("Label matrix shape: %s", sample_label.shape)
+    logging.info("Total number of images in the dataset: %d", len(train_dataset))
+    logging.info("Image size after transformation: %s", sample_img.shape)
+    logging.info("Label matrix shape: %s", sample_label.shape)
 
+    model = YOLOv1()
 
-model = YOLOv1()
+    model.to(device)
 
-model.to(device)
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=DECAY
+    )
 
-optimizer = torch.optim.SGD(
-    model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=DECAY
-)
+    model.train_model(
+        train_dataloader,
+        yolo_loss,
+        optimizer,
+        device=device,
+        epochs=EPOCHS,
+        validation_dataloader=val_dataloader,
+        validate_every=1,
+    )
 
-model.train_model(
-    train_dataloader,
-    yolo_loss,
-    optimizer,
-    device=device,
-    epochs=EPOCHS,
-    validation_dataloader=val_dataloader,
-    validate_every=1,
-)
-
-# torch.save(model.state_dict(), "yolo_trained.pt")
+    # torch.save(model.state_dict(), "yolo_trained.pt")
