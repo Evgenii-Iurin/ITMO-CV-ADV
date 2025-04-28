@@ -110,3 +110,118 @@ def non_max_suppression(pred_boxes, iou_threshold=0.5):
     # Сортируем результат по img_idx и confidence
     result_boxes = sorted(result_boxes, key=lambda x: (x[0], -x[1]))
     return [list(box) for box in result_boxes]
+
+def get_bboxes(dataloader, model, iou_threshold=0.5, threshold=0.4, device="cpu", max_batches=None):
+    """
+    Собирает списки предсказанных и реальных боксов из даталоадера.
+
+    Args:
+        dataloader: DataLoader с данными
+        model: Модель YOLO
+        iou_threshold: Порог для NMS (не используется в этой функции)
+        threshold: Порог уверенности для предсказаний
+        device: Устройство для вычислений
+        max_batches: Максимальное количество батчей для обработки
+
+    Returns:
+        pred_boxes: список [img_idx, confidence, class_pred, x_center, y_center, width, height]
+        true_boxes: список [img_idx, class_true, x_center, y_center, width, height]
+        !! возвращает метки с координатами, нормализованными относительно ВСЕЙ картинки, а не grid cells
+    """
+    model.eval()
+    pred_boxes = []
+    true_boxes = []
+    img_idx = 0
+    batch_count = 0
+    S = 7  # Размер grid-сетки
+    B = 2  # Количество bounding boxes на ячейку
+    C = 2  # Количество классов
+
+    for imgs, labels in dataloader:
+        if max_batches and batch_count >= max_batches:
+            break
+
+        imgs = imgs.to(device)
+        labels = labels.to(device)
+
+        with torch.no_grad():
+            preds = model(imgs)
+
+        batch_size = imgs.shape[0]
+
+        for batch_idx in range(batch_size):
+            label = labels[batch_idx]
+            prediction = preds[batch_idx]
+
+            # Проверка размерности предсказания
+            if prediction.shape != (S, S, B * 5 + C):
+                raise ValueError(f"Unexpected prediction shape {prediction.shape}, expected (7, 7, {B*5 + C})")
+
+            # Истинные боксы (из labels)
+            for i in range(S):
+                for j in range(S):
+                    for b in range(B):
+                        p_idx = b * 5
+                        if label[i, j, p_idx] > 0.5:  # если есть объект
+                            x_cell, y_cell, w_cell, h_cell = label[i, j, p_idx+1:p_idx+5]
+                            class_label = torch.argmax(label[i, j, B*5:B*5+C])
+
+                            # Восстановление глобальных координат
+                            x = (j + x_cell.item()) / S
+                            y = (i + y_cell.item()) / S
+                            w = w_cell.item() / S
+                            h = h_cell.item() / S
+
+                            true_boxes.append([
+                                img_idx,
+                                class_label.item(),
+                                x,
+                                y,
+                                w,
+                                h
+                            ])
+
+            # Предсказанные боксы
+            for i in range(S):
+                for j in range(S):
+                    # Находим bounding box с максимальной уверенностью
+                    best_box = None
+                    max_conf = 0
+
+                    for b in range(B):
+                        conf = prediction[i, j, b*5 + 4]  # confidence
+                        if conf > max_conf:
+                            max_conf = conf
+                            best_box = b
+
+                    if best_box is not None and max_conf > threshold:
+                        # Получаем параметры лучшего бокса
+                        box = prediction[i, j, best_box*5 : best_box*5+4]  # x, y, w, h
+
+                        # Получаем класс
+                        class_probs = prediction[i, j, B*5:B*5+C]
+                        best_class = torch.argmax(class_probs)
+                        best_class_score = class_probs[best_class] * max_conf  # class_prob * confidence
+
+                        # Восстановление глобальных координат
+                        x, y, w, h = box
+                        x = (j + x.item()) / S
+                        y = (i + y.item()) / S
+                        w = w.item() / S
+                        h = h.item() / S
+
+                        pred_boxes.append([
+                            img_idx,
+                            best_class_score.item(),
+                            best_class.item(),
+                            x,
+                            y,
+                            w,
+                            h
+                        ])
+
+            img_idx += 1
+        batch_count += 1
+
+    return pred_boxes, true_boxes
+
