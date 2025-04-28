@@ -1,4 +1,5 @@
 import torch
+from src.hw_yolo.utils import intersection_over_union
 
 
 def calculate_map(pred_boxes, true_boxes, iou_threshold=0.5, num_classes=20):
@@ -49,8 +50,7 @@ def calculate_map(pred_boxes, true_boxes, iou_threshold=0.5, num_classes=20):
 
             for gt_idx, gt in enumerate(gts_for_img):
                 iou = intersection_over_union(
-                    torch.tensor(detection[3:]),
-                    torch.tensor(gt[2:])
+                    torch.tensor(detection[3:]), torch.tensor(gt[2:])
                 )
 
                 if iou > best_iou:
@@ -60,7 +60,9 @@ def calculate_map(pred_boxes, true_boxes, iou_threshold=0.5, num_classes=20):
             if best_iou > iou_threshold:
                 if amount_bboxes[img_idx][best_gt_idx] == 0:
                     TP[detection_idx] = 1
-                    amount_bboxes[img_idx][best_gt_idx] = 1  # Помечаем как использованный
+                    amount_bboxes[img_idx][
+                        best_gt_idx
+                    ] = 1  # Помечаем как использованный
                 else:
                     FP[detection_idx] = 1
             else:
