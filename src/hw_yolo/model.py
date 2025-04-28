@@ -85,9 +85,13 @@ class YOLOv1(nn.Module):
     ):
         self.train()
 
+        self.to(device)
         for epoch in range(epochs):
             epoch_loss = 0
             for imgs, labels in dataloader:
+                imgs = imgs.to(device)
+                labels = labels.to(device)
+
                 optimizer.zero_grad()
                 preds = self(imgs)
                 loss_value = loss_fn(preds, labels)

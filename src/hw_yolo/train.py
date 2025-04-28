@@ -114,8 +114,12 @@ print(f"Размер label matrix: {sample_label.shape}")
 from loss import yolo_loss
 from model import YOLOv1
 
+
 model = YOLOv1()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
-model.train_model(dataloader, yolo_loss, optimizer, 1)
+device = "cuda" if torch.cuda.is_available() else 'cpu'
+print(device)
+model.to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+model.train_model(dataloader, yolo_loss, optimizer, 50, device)
 
 torch.save(model.state_dict(), "yolo_trained.pt")
