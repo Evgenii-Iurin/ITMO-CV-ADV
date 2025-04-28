@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, ReLU
+from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, LeakyReLU
 from torch.utils.data import DataLoader
 from typing import Callable
 
@@ -10,148 +10,84 @@ class YOLOv1(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.bounding_boxes = bounding_boxes
-        # Размерность выхода: S x S x (B*5 + C) = 7 x 7 x (3*5 + 2) = 7 x 7 x 17
-        self.S = 7
-        self.output_dim = 7 * 7 * (self.bounding_boxes*5 + num_classes)
+        self.output_dim = 7 * 7 * (self.bounding_boxes * 5 + num_classes)
 
         self.model = nn.Sequential(
-            # 1. Первый сверточный слой
             Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
-            ReLU(),
+            LeakyReLU(0.1),
             MaxPool2d(2, stride=2),
-
-            # 2. Дальше сверточные блоки
             Conv2d(64, 192, kernel_size=3, padding=1),
-            ReLU(),
+            LeakyReLU(0.1),
             MaxPool2d(2, stride=2),
-
             Conv2d(192, 128, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(128, 256, kernel_size=3, padding=1),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(256, 256, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(256, 512, kernel_size=3, padding=1),
-            ReLU(),
+            LeakyReLU(0.1),
             MaxPool2d(2, stride=2),
-
-            # 3. Блоки с 4 повторами 1x1 → 3x3
             Conv2d(512, 256, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(256, 512, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Conv2d(512, 256, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(256, 512, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Conv2d(512, 256, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(256, 512, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Conv2d(512, 256, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(256, 512, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Conv2d(512, 512, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(512, 1024, kernel_size=3, padding=1),
-            ReLU(),
+            LeakyReLU(0.1),
             MaxPool2d(2, stride=2),
-
-            # 4. Дальше глубокие сверточные слои
             Conv2d(1024, 512, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(512, 1024, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Conv2d(1024, 512, kernel_size=1, padding=0),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(512, 1024, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Conv2d(1024, 1024, kernel_size=3, padding=1),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(1024, 1024, kernel_size=3, stride=2, padding=1),
-            ReLU(),
-
-            # 5. Заключительные свертки
+            LeakyReLU(0.1),
             Conv2d(1024, 1024, kernel_size=3, padding=1),
-            ReLU(),
+            LeakyReLU(0.1),
             Conv2d(1024, 1024, kernel_size=3, padding=1),
-            ReLU(),
-
+            LeakyReLU(0.1),
             Flatten(),
-
-            # 6. Полносвязные слои
             Linear(1024 * 7 * 7, 4096),
-            ReLU(),
-            Linear(4096, self.output_dim)  # Изменено на правильную размерность
+            LeakyReLU(0.1),
+            Linear(4096, self.output_dim),
         )
-
-    # def forward(self, x):
-    # #С СИГМОИДАМИ
-    #     out = self.model(x)
-    #     out = out.view(-1, 7, 7, self.bounding_boxes*5 + self.num_classes)
-
-    #     for b in range(self.bounding_boxes):
-    #         # Индексы параметров bbox
-    #         x_idx, y_idx, w_idx, h_idx = b*5, b*5+1, b*5+2, b*5+3
-
-    #         # Координаты центра (x, y) через sigmoid → [0, 1]
-    #         x = out[..., b*5]      # x (относительно ячейки)
-    #         y = out[..., b*5+1]  # y (относительно ячейки)
-
-    #         # Ширина и высота (w, h) через exp + нормировка на размер изображения
-    #         w = torch.exp(out[..., b*5+2]) / 448  # w (нормировка на 224, если изображение 224x224)
-    #         h = torch.exp(out[..., b*5+3]) / 448  # h
-
-    #         # Confidence через sigmoid → [0, 1]
-    #         conf = torch.sigmoid(out[..., b*5+4])
-
-    #     # Softmax для классов
-    #     out[..., self.bounding_boxes*5:] = torch.softmax(out[..., self.bounding_boxes*5:], dim=-1)
-
-    #     return out
 
     def forward(self, x):
         out = self.model(x)
-        # Преобразуем в формат [batch_size, S*S, B*5+C]
-        batch_size = out.size(0)
-        out = out.view(batch_size, self.S, self.S, self.bounding_boxes*5 + self.num_classes)
-        
-        # Применяем активации
-        for b in range(self.bounding_boxes):
-            # x, y координаты центра через sigmoid (нормализация в пределах ячейки)
-            out[..., b*5+0] = out[..., b*5+0]
-            out[..., b*5+1] = out[..., b*5+1]
-            
-            # Для w, h можно оставить линейную активацию или применить exp
-            # out[..., b*5+2] = torch.exp(out[..., b*5+2])
-            # out[..., b*5+3] = torch.exp(out[..., b*5+3])
-            
-            # Confidence score через sigmoid
-            out[..., b*5+4] = torch.sigmoid(out[..., b*5+4])
-        
-        # Softmax для классов
-        out[..., self.bounding_boxes*5:] = torch.softmax(out[..., self.bounding_boxes*5:], dim=-1)
-        
-        # Преобразуем в формат [batch_size, S*S, B*5+C] для функции потерь
-        out = out.view(batch_size, self.S*self.S, self.bounding_boxes*5 + self.num_classes)
-        
+        out = out.view(-1, 7, 7, self.bounding_boxes * 5 + self.num_classes)
         return out
 
-
-    def train_model(self, dataloader: DataLoader, loss_fn: Callable, optimizer: torch.optim.Optimizer, epochs: int = 10, device='cpu'):
+    def train_model(
+        self,
+        dataloader: DataLoader,
+        loss_fn: Callable,
+        optimizer: torch.optim.Optimizer,
+        epochs: int = 10,
+    ):
         self.train()
 
         self.to(device)
         for epoch in range(epochs):
             epoch_loss = 0
-            i = 0
             for imgs, labels in dataloader:
                 imgs = imgs.to(device)
                 labels = labels.to(device)
@@ -163,10 +99,6 @@ class YOLOv1(nn.Module):
                 optimizer.step()
 
                 epoch_loss += loss_value.item()
-                # i += 1
-                # if i == 16:
-                #     print(f"Batch {epoch+1}/{epochs}, Loss: {loss_value.item():.4f}")
-                #     i = 0
 
             avg_loss = epoch_loss / len(dataloader)
             print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}")
