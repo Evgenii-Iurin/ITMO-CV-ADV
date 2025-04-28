@@ -6,6 +6,10 @@ from src.hw_yolo.dataset import CustomDataset
 from loss import yolo_loss
 from model import YOLOv1
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 EPOCHS = 10
 BATCH_SIZE = 64
 MOMENTUM = 0.9
@@ -13,9 +17,8 @@ DECAY = 5e-4
 LEARNING_RATE = 1e-3
 
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+logging.info(device)
 
 transform = T.Compose(
     [
@@ -35,6 +38,9 @@ logging.info("Label matrix shape: %s", sample_label.shape)
 
 
 model = YOLOv1()
+
+model.to(device)
+
 optimizer = torch.optim.SGD(
     model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=DECAY
 )
