@@ -5,6 +5,8 @@ from torch.utils.data import DataLoader
 from src.hw_yolo.dataset import CustomDataset
 from loss import yolo_loss
 from model import YOLOv1
+from torch.utils.tensorboard import SummaryWriter
+
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -36,6 +38,8 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
+    writer = SummaryWriter(log_dir="runs/yolov1_experiment")
+
     sample_img, sample_label = train_dataset[1]
 
     logging.info("Total number of images in the dataset: %d", len(train_dataset))
@@ -58,6 +62,9 @@ if __name__ == "__main__":
         epochs=EPOCHS,
         validation_dataloader=val_dataloader,
         validate_every=1,
+        writer=writer,
     )
+
+    writer.close()
 
     # torch.save(model.state_dict(), "yolo_trained.pt")

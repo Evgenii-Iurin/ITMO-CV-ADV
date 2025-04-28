@@ -3,6 +3,7 @@ from torch import nn
 from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, LeakyReLU
 from torch.utils.data import DataLoader
 from typing import Callable
+from torch.utils.tensorboard import SummaryWriter  # <<< добавляем импорт
 
 import logging
 
@@ -91,13 +92,13 @@ class YOLOv1(nn.Module):
         epochs: int = 10,
         validation_dataloader: DataLoader = None,
         validate_every: int = 1,
+        writer: SummaryWriter = None,
     ):
-        self.train()
         self.to(device)
 
         for epoch in range(epochs):
             epoch_loss = 0
-            self.train()  # На всякий случай явно ставим train режим в начале эпохи
+            self.train()
             for imgs, labels in dataloader:
                 imgs = imgs.to(device)
                 labels = labels.to(device)
@@ -113,14 +114,21 @@ class YOLOv1(nn.Module):
             avg_loss = epoch_loss / len(dataloader)
             logging.info("Epoch %d/%d, Train Loss: %.4f", epoch + 1, epochs, avg_loss)
 
+            if writer is not None:
+                writer.add_scalar("Loss/Train", avg_loss, epoch)
+
             if validation_dataloader is not None and (epoch + 1) % validate_every == 0:
-                self.validate_model(validation_dataloader, loss_fn, device)
+                self.validate_model(
+                    validation_dataloader, loss_fn, device, epoch, writer
+                )
 
     def validate_model(
         self,
         dataloader: DataLoader,
         loss_fn: Callable,
         device: str,
+        epoch: int = None,
+        writer: SummaryWriter = None,
     ):
         self.eval()
         self.to(device)
@@ -136,3 +144,7 @@ class YOLOv1(nn.Module):
 
         avg_loss = total_loss / len(dataloader)
         logging.info("Validation Loss: %.4f", avg_loss)
+
+        if writer is not None and epoch is not None:
+            writer.add_scalar("Loss/Validation", avg_loss, epoch)
+        return avg_loss
