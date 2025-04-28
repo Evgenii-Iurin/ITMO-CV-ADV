@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, LeakyReLU
 from torch.utils.data import DataLoader
 from typing import Callable
-from torch.utils.tensorboard import SummaryWriter  # <<< добавляем импорт
+from torch.utils.tensorboard import SummaryWriter
 
 import logging
 
