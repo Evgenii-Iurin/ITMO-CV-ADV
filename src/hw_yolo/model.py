@@ -81,6 +81,7 @@ class YOLOv1(nn.Module):
         dataloader: DataLoader,
         loss_fn: Callable,
         optimizer: torch.optim.Optimizer,
+        device: str,
         epochs: int = 10,
     ):
         self.train()
