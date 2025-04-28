@@ -20,6 +20,7 @@ class YOLOv1(nn.Module):
         self.num_classes = num_classes
         self.bounding_boxes = bounding_boxes
         self.output_dim = 7 * 7 * (self.bounding_boxes * 5 + num_classes)
+        self.last_validation_loss = float("inf")
 
         self.model = nn.Sequential(
             Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
@@ -119,8 +120,10 @@ class YOLOv1(nn.Module):
             if writer is not None:
                 writer.add_scalar("Loss/Train", avg_loss, epoch)
 
-            if validation_dataloader is not None and (epoch + 1) % validate_every == 0:
-                self.validate_model(
+            if validation_dataloader is not None and (
+                (epoch + 1) % validate_every == 0 or epoch == epochs - 1
+            ):
+                self.last_validation_loss = self.validate_model(
                     validation_dataloader, loss_fn, device, epoch, writer
                 )
 
@@ -145,13 +148,14 @@ class YOLOv1(nn.Module):
                 total_loss += loss_value.item()
 
         avg_loss = total_loss / len(dataloader)
-        pred_boxes, true_boxes = get_bboxes(dataloader=dataloader, model=self, threshold=0.6, max_batches=None)
-        filtered_boxes = non_max_suppression(pred_boxes, iou_threshold=0.5)
-        map_score = calculate_map(filtered_boxes, true_boxes, iou_threshold=0.5, num_classes=2)
         logging.info("Validation Loss: %.4f", avg_loss)
-        logging.info("mAP: %.4f", map_score)
+
+        # pred_boxes, true_boxes = get_bboxes(dataloader=dataloader, model=self, threshold=0.6, max_batches=None)
+        # filtered_boxes = non_max_suppression(pred_boxes, iou_threshold=0.5)
+        # map_score = calculate_map(filtered_boxes, true_boxes, iou_threshold=0.5, num_classes=2)
+        # logging.info("mAP: %.4f", map_score)
 
         if writer is not None and epoch is not None:
             writer.add_scalar("Loss/Validation", avg_loss, epoch)
-            writer.add_scalar("mAP/Validation", map_score, epoch)
+            # writer.add_scalar("mAP/Validation", map_score, epoch)
         return avg_loss

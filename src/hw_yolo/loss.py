@@ -54,7 +54,7 @@ def yolo_loss(
 
     # Маска для ячеек, содержащих объекты
     obj_mask = target_conf > 0  # [batch, S*S, B]
-    noobj_mask = target_conf == 0  # [batch, S*S, B]
+    # noobj_mask = target_conf == 0  # [batch, S*S, B]
 
     # Находим бокс с максимальным IoU для каждого целевого бокса
     iou_scores = torch.zeros_like(pred_conf)
