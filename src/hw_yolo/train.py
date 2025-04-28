@@ -45,6 +45,6 @@ optimizer = torch.optim.SGD(
     model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=DECAY
 )
 
-model.train_model(dataloader, yolo_loss, optimizer, epochs=EPOCHS)
+model.train_model(dataloader, yolo_loss, optimizer, device=device, epochs=EPOCHS)
 
 # torch.save(model.state_dict(), "yolo_trained.pt")
