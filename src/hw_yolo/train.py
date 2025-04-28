@@ -11,7 +11,7 @@ logging.basicConfig(
 )
 
 EPOCHS = 10
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 MOMENTUM = 0.9
 DECAY = 5e-4
 LEARNING_RATE = 1e-3
@@ -27,12 +27,15 @@ transform = T.Compose(
     ]
 )
 
-dataset = CustomDataset(root_dir="dataset_ready", transform=transform)
-dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+train_dataset = CustomDataset(root_dir="dataset/train", transform=transform)
+val_dataset = CustomDataset(root_dir="dataset/val", transform=transform)
 
-sample_img, sample_label = dataset[1]
+train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-logging.info("Total number of images in the dataset: %d", len(dataset))
+sample_img, sample_label = train_dataset[1]
+
+logging.info("Total number of images in the dataset: %d", len(train_dataset))
 logging.info("Image size after transformation: %s", sample_img.shape)
 logging.info("Label matrix shape: %s", sample_label.shape)
 
@@ -45,6 +48,14 @@ optimizer = torch.optim.SGD(
     model.parameters(), lr=LEARNING_RATE, momentum=MOMENTUM, weight_decay=DECAY
 )
 
-model.train_model(dataloader, yolo_loss, optimizer, device=device, epochs=EPOCHS)
+model.train_model(
+    train_dataloader,
+    yolo_loss,
+    optimizer,
+    device=device,
+    epochs=EPOCHS,
+    validation_dataloader=val_dataloader,
+    validate_every=1,
+)
 
 # torch.save(model.state_dict(), "yolo_trained.pt")

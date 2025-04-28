@@ -4,6 +4,12 @@ from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, LeakyReLU
 from torch.utils.data import DataLoader
 from typing import Callable
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 class YOLOv1(nn.Module):
     def __init__(self, num_classes=2, bounding_boxes=2):
@@ -83,12 +89,15 @@ class YOLOv1(nn.Module):
         optimizer: torch.optim.Optimizer,
         device: str,
         epochs: int = 10,
+        validation_dataloader: DataLoader = None,
+        validate_every: int = 1,
     ):
         self.train()
-
         self.to(device)
+
         for epoch in range(epochs):
             epoch_loss = 0
+            self.train()  # На всякий случай явно ставим train режим в начале эпохи
             for imgs, labels in dataloader:
                 imgs = imgs.to(device)
                 labels = labels.to(device)
@@ -102,4 +111,28 @@ class YOLOv1(nn.Module):
                 epoch_loss += loss_value.item()
 
             avg_loss = epoch_loss / len(dataloader)
-            print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}")
+            logging.info("Epoch %d/%d, Train Loss: %.4f", epoch + 1, epochs, avg_loss)
+
+            if validation_dataloader is not None and (epoch + 1) % validate_every == 0:
+                self.validate_model(validation_dataloader, loss_fn, device)
+
+    def validate_model(
+        self,
+        dataloader: DataLoader,
+        loss_fn: Callable,
+        device: str,
+    ):
+        self.eval()
+        self.to(device)
+        total_loss = 0
+        with torch.no_grad():
+            for imgs, labels in dataloader:
+                imgs = imgs.to(device)
+                labels = labels.to(device)
+
+                preds = self(imgs)
+                loss_value = loss_fn(preds, labels)
+                total_loss += loss_value.item()
+
+        avg_loss = total_loss / len(dataloader)
+        logging.info("Validation Loss: %.4f", avg_loss)
