@@ -2,6 +2,8 @@ import torch
 from torch import nn
 from torch.nn import Conv2d, MaxPool2d, Flatten, Linear, LeakyReLU
 from torch.utils.data import DataLoader
+from utils import get_bboxes, non_max_suppression
+from metrics import intersection_over_union, calculate_map
 from typing import Callable
 from torch.utils.tensorboard import SummaryWriter
 
@@ -143,8 +145,13 @@ class YOLOv1(nn.Module):
                 total_loss += loss_value.item()
 
         avg_loss = total_loss / len(dataloader)
+        pred_boxes, true_boxes = get_bboxes(dataloader=dataloader, model=self, threshold=0.6, max_batches=None)
+        filtered_boxes = non_max_suppression(pred_boxes, iou_threshold=0.5)
+        map_score = calculate_map(filtered_boxes, true_boxes, iou_threshold=0.5, num_classes=2)
         logging.info("Validation Loss: %.4f", avg_loss)
+        logging.info("mAP: %.4f", map_score)
 
         if writer is not None and epoch is not None:
             writer.add_scalar("Loss/Validation", avg_loss, epoch)
+            writer.add_scalar("mAP/Validation", map_score, epoch)
         return avg_loss
