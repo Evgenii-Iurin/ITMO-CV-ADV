@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "src"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10"
+python = "3.11.*"
 pre-commit = "^4.2.0"
 opencv-python = "^4.11.0.86"
 ipykernel = "^6.29.5"
@@ -19,6 +19,8 @@ torch = "^2.7.0"
 torchvision = "^0.22.0"
 tensorboard = "2.18"
 optuna = "^4.3.0"
+fiftyone = "^1.4.1"
+timm = "^1.0.15"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.5"
