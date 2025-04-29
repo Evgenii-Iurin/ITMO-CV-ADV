@@ -226,6 +226,13 @@ def validate_recall_at_k(model, dataloader, k, device):
 
 
 def main():
+    BATCH_SIZE = 32
+    MARGIN = 0.572356502367154
+    LR = 0.0005312103322276598
+    EMBEDDING_DIM = 64
+    SEMI_HARD = True
+    NUM_EPOCHS = 2
+
     USE_FIFTYONE = False
 
     val_df = pd.read_csv("./src/hw_metric_learning/homework/val.csv")
@@ -293,25 +300,28 @@ def main():
         val_samples, transform=transform, label_to_idx=label_to_idx
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
+    train_loader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4
+    )
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Используем устройство: {device}")
 
-    model = EmbeddingNet(backbone_name="levit_128", embedding_dim=128, pretrained=True)
+    model = EmbeddingNet(
+        backbone_name="levit_128", embedding_dim=EMBEDDING_DIM, pretrained=True
+    )
     model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
-    criterion = nn.TripletMarginLoss(margin=1.0, p=2)
+    optimizer = optim.Adam(model.parameters(), lr=LR)
+    criterion = nn.TripletMarginLoss(margin=MARGIN, p=2)
 
-    num_epochs = 2
     k = 1
 
-    for epoch in range(num_epochs):
-        print(f"\nЭпоха {epoch + 1}/{num_epochs}")
+    for epoch in range(NUM_EPOCHS):
+        print(f"\nЭпоха {epoch + 1}/{NUM_EPOCHS}")
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, device, margin=1.0, semi_hard=True
+            model, train_loader, optimizer, device, margin=MARGIN, semi_hard=SEMI_HARD
         )
         val_loss = validate(model, val_loader, criterion, device)
         recall_at_k = validate_recall_at_k(model, val_loader, k, device)

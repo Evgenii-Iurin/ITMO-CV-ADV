@@ -118,10 +118,11 @@ class Caltech256ClassificationDataset(Dataset):
 
 
 def main():
+
     # Путь к сохранённой модели и настройки
-    model_path = "./src/hw_metric_learning/homework/model_epoch_2.pth"
+    model_path = "./train_2/model_epoch_2.pth"
     backbone_name = "levit_128"
-    embedding_dim = 128
+    embedding_dim = 64
     batch_size = 32
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
