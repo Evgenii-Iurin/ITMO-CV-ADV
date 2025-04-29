@@ -8,6 +8,7 @@ from PIL import Image
 import pandas as pd
 import fiftyone as fo
 import fiftyone.zoo as foz
+from pathlib import Path
 
 
 class EmbeddingNet(nn.Module):
@@ -163,18 +164,15 @@ def main():
                 train_samples.append((sample.filepath, label))
 
     else:
-        data_dir = "./src/hw_metric_learning/homework/256_ObjectCategories"
-        transform = transforms.Compose([transforms.Resize((224, 224))])
-        dataset = datasets.ImageFolder(root=data_dir, transform=transform)
-
-        # Loop over dataset
-        for img_path, class_index in dataset.samples:
-            filename = os.path.basename(img_path)
-            label = dataset.classes[class_index]
-            if filename in val_filenames:
-                val_samples.append((img_path, label))
-            else:
-                train_samples.append((img_path, label))
+        data_dir = Path("./src/hw_metric_learning/homework/256_ObjectCategories")
+        for sample_folder in data_dir.iterdir():
+            for sample_path in sample_folder.iterdir():
+                label = sample_path.parent.name
+                filename = sample_path.name
+                if filename in val_filenames:
+                    val_samples.append((sample_path, label))
+                else:
+                    train_samples.append((sample_path, label))
 
     print(f"Обучающих сэмплов: {len(train_samples)}")
     print(f"Валидационных сэмплов: {len(val_samples)}")
