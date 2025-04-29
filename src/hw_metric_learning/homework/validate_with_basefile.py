@@ -3,7 +3,7 @@ import torch
 import timm
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
+from torchvision import transforms, datasets
 from PIL import Image
 import pandas as pd
 import fiftyone as fo
@@ -118,7 +118,7 @@ class Caltech256ClassificationDataset(Dataset):
 
 def main():
     # Путь к сохранённой модели и настройки
-    model_path = "homework/model_epoch_2.pth"
+    model_path = "./src/hw_metric_learning/homework/model_epoch_2.pth"
     backbone_name = "levit_128"
     embedding_dim = 128
     batch_size = 32
@@ -134,29 +134,47 @@ def main():
         ]
     )
 
-    # Загружаем датасет Caltech256 через FiftyOne
-    dataset = foz.load_zoo_dataset("caltech256")
-    print(f"Загружен Caltech256: {len(dataset)} образцов")
+    USE_FIFTYONE = False
 
-    # Читаем CSV с валидационными сэмплами (столбец filename)
-    val_df = pd.read_csv("homework/val.csv")
+    val_df = pd.read_csv("./src/hw_metric_learning/homework/val.csv")
     val_filenames = set(val_df["filename"].tolist())
 
     train_samples = []
     val_samples = []
 
-    for sample in dataset:
-        filename = os.path.basename(sample.filepath)
-        if "ground_truth" in sample and sample["ground_truth"] is not None:
-            label = sample["ground_truth"]["label"]
-        else:
-            label = sample.get("label", None)
-        if label is None:
-            continue
-        if filename in val_filenames:
-            val_samples.append((sample.filepath, label))
-        else:
-            train_samples.append((sample.filepath, label))
+    if USE_FIFTYONE:
+        # Загружаем датасет Caltech256 через FiftyOne
+        dataset = foz.load_zoo_dataset("caltech256", overwrite=True)
+        print(f"Загружен Caltech256: {len(dataset)} образцов")
+
+        for sample in dataset:
+            filename = os.path.basename(sample.filepath)
+            # Предполагается, что метка хранится в поле ground_truth с ключом "label"
+            if "ground_truth" in sample and sample["ground_truth"] is not None:
+                label = sample["ground_truth"]["label"]
+            else:
+                # Если поле отсутствует, можно попробовать sample["label"]
+                label = sample.get("label", None)
+            if label is None:
+                continue
+            if filename in val_filenames:
+                val_samples.append((sample.filepath, label))
+            else:
+                train_samples.append((sample.filepath, label))
+
+    else:
+        data_dir = "./src/hw_metric_learning/homework/256_ObjectCategories"
+        transform = transforms.Compose([transforms.Resize((224, 224))])
+        dataset = datasets.ImageFolder(root=data_dir, transform=transform)
+
+        # Loop over dataset
+        for img_path, class_index in dataset.samples:
+            filename = os.path.basename(img_path)
+            label = dataset.classes[class_index]
+            if filename in val_filenames:
+                val_samples.append((img_path, label))
+            else:
+                train_samples.append((img_path, label))
 
     print(f"Обучающих сэмплов: {len(train_samples)}")
     print(f"Валидационных сэмплов: {len(val_samples)}")

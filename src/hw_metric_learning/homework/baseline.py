@@ -227,7 +227,7 @@ def validate_recall_at_k(model, dataloader, k, device):
 def main():
     USE_FIFTYONE = False
 
-    val_df = pd.read_csv("homework/val.csv")
+    val_df = pd.read_csv("./src/hw_metric_learning/homework/val.csv")
     val_filenames = set(val_df["filename"].tolist())
 
     train_samples = []
@@ -254,7 +254,7 @@ def main():
                 train_samples.append((sample.filepath, label))
 
     else:
-        data_dir = "/src/hw_metric_learning/256_ObjectCategories"
+        data_dir = "./src/hw_metric_learning/homework/256_ObjectCategories"
         transform = transforms.Compose([transforms.Resize((224, 224))])
         dataset = datasets.ImageFolder(root=data_dir, transform=transform)
 
