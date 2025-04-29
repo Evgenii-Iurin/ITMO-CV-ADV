@@ -258,6 +258,9 @@ def main():
         data_dir = Path("./src/hw_metric_learning/homework/256_ObjectCategories")
         for sample_folder in data_dir.iterdir():
             for sample_path in sample_folder.iterdir():
+                if sample_path.suffix not in [".jpg", ".jpeg", ".png"]:
+                    continue
+
                 label = sample_path.parent.name
                 filename = sample_path.name
                 if filename in val_filenames:
