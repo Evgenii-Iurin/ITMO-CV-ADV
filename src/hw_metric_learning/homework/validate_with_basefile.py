@@ -123,7 +123,7 @@ def main():
     model_path = "./train_2/model_epoch_2.pth"
     backbone_name = "levit_128"
     embedding_dim = 64
-    batch_size = 32
+    batch_size = 64
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Используем устройство: {device}")

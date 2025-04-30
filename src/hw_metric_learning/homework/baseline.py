@@ -226,9 +226,9 @@ def validate_recall_at_k(model, dataloader, k, device):
 
 
 def main():
-    BATCH_SIZE = 32
-    MARGIN = 0.572356502367154
-    LR = 0.0005312103322276598
+    BATCH_SIZE = 64
+    MARGIN = 1.081054533013651
+    LR = 0.0006234605848322005
     EMBEDDING_DIM = 64
     SEMI_HARD = True
     NUM_EPOCHS = 2
