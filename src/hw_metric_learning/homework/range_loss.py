@@ -13,78 +13,47 @@ import timm
 
 import fiftyone.zoo as foz
 
+import wandb
+
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+
+from torch.utils.data import Dataset
+from PIL import Image
+import torch
 
 class TripletFODataset(Dataset):
     def __init__(self, samples, transform=None, label_to_idx=None):
         """
         Параметры:
-            samples (list): Список кортежей (filepath, label) – путь к изображению и его строковая метка.
-            transform: Трансформации для изображения.
-            label_to_idx (dict): Словарь для отображения строковой метки в числовой индекс.
-                            Если None, он будет вычислен по списку samples.
+            samples (list): Список кортежей (filepath, label)
+            transform: torchvision трансформации
+            label_to_idx (dict): словарь отображения строковой метки в индекс
         """
         self.transform = transform
-        # Если не передан mapping, вычисляем его из всех меток
+
         if label_to_idx is None:
             labels = sorted({label for _, label in samples})
             self.label_to_idx = {label: idx for idx, label in enumerate(labels)}
         else:
             self.label_to_idx = label_to_idx
 
-        # Преобразуем метки в числовые индексы
         self.samples = [
             (filepath, self.label_to_idx[label]) for filepath, label in samples
         ]
-
-        # Построим словарь: для каждого класса список индексов образцов данного класса
-        self.class_to_indices = {}
-        for idx, (_, label) in enumerate(self.samples):
-            if label not in self.class_to_indices:
-                self.class_to_indices[label] = []
-            self.class_to_indices[label].append(idx)
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, index):
-        """
-        Возвращает кортеж:
-        (anchor_img, positive_img, negative_img, anchor_label, negative_label)
-        """
-        filepath, anchor_label = self.samples[index]
-        anchor_img = Image.open(filepath).convert("RGB")
-        if self.transform:
-            anchor_img = self.transform(anchor_img)
+        filepath, label = self.samples[index]
+        image = Image.open(filepath).convert("RGB")
 
-        # Выбираем позитив: другое изображение того же класса
-        positive_index = index
-        while positive_index == index:
-            positive_index = random.choice(self.class_to_indices[anchor_label])
-        positive_filepath, _ = self.samples[positive_index]
-        positive_img = Image.open(positive_filepath).convert("RGB")
         if self.transform:
-            positive_img = self.transform(positive_img)
+            image = self.transform(image)
 
-        # Выбираем негатив: изображение из другого класса
-        negative_label = anchor_label
-        while negative_label == anchor_label:
-            negative_label = random.choice(list(self.class_to_indices.keys()))
-        negative_index = random.choice(self.class_to_indices[negative_label])
-        negative_filepath, negative_label = self.samples[negative_index]
-        negative_img = Image.open(negative_filepath).convert("RGB")
-        if self.transform:
-            negative_img = self.transform(negative_img)
+        return image, torch.tensor(label)
 
-        # Приводим метки к тензорам
-        return (
-            anchor_img,
-            positive_img,
-            negative_img,
-            torch.tensor(anchor_label),
-            torch.tensor(negative_label),
-        )
 
 
 class EmbeddingNet(nn.Module):
@@ -110,65 +79,73 @@ class EmbeddingNet(nn.Module):
         return x
 
 
-def train_one_epoch(model, dataloader, optimizer, device, margin=1.0, semi_hard=True):
+import torch
+import torch.nn.functional as F
+
+def range_loss(embeddings, labels, margin=1.0):
+    unique_labels = torch.unique(labels)
+    intra_loss = 0.0
+    inter_loss = 0.0
+    count = 0
+
+    class_means = []
+
+    for label in unique_labels:
+        class_mask = labels == label
+        class_embeddings = embeddings[class_mask]
+
+        if class_embeddings.size(0) < 2:
+            continue  # Skip if not enough samples
+
+        # Intra-class: max pairwise distance
+        pdists = torch.cdist(class_embeddings, class_embeddings, p=2)
+        max_dist = pdists.max()
+        intra_loss += max_dist
+        count += 1
+
+        class_mean = class_embeddings.mean(dim=0)
+        class_means.append(class_mean)
+
+    if count > 0:
+        intra_loss = intra_loss / count
+
+    # Inter-class: min distance between class centers
+    if len(class_means) >= 2:
+        class_means = torch.stack(class_means)
+        center_dists = torch.cdist(class_means, class_means, p=2)
+        eye = torch.eye(center_dists.size(0), device=embeddings.device).bool()
+        center_dists = center_dists.masked_fill(eye, float('inf'))
+        min_center_dist = center_dists.min()
+        inter_loss = torch.relu(margin - min_center_dist)
+
+    total_loss = intra_loss + inter_loss
+
+    # Убедитесь, что total_loss является тензором
+    return total_loss
+
+
+def train_one_epoch(model, dataloader, optimizer, device, margin=1.0):
     model.train()
     running_loss = 0.0
 
     for batch_idx, batch in enumerate(dataloader):
-        # Распаковка батча: anchor, positive, negative, anchor_label, negative_label
-        anchor, positive, negative, anchor_label, negative_label = batch
-
-        anchor = anchor.to(device)
-        positive = positive.to(device)
-        negative = negative.to(device)
-        anchor_label = anchor_label.to(device)
-        negative_label = negative_label.to(device)
+        # Ожидаем, что батч состоит из множества (image, label)
+        images, labels = batch
+        images = images.to(device)
+        labels = labels.to(device)
 
         optimizer.zero_grad()
+        embeddings = model(images)
 
-        anchor_out = model(anchor)
-        positive_out = model(positive)
-        negative_out = model(negative)
-
-        if semi_hard:
-            candidate_embeddings = torch.cat([anchor_out, negative_out], dim=0)
-            candidate_labels = torch.cat([anchor_label, negative_label], dim=0)
-            batch_loss = 0.0
-            batch_size = anchor_out.size(0)
-
-            for i in range(batch_size):
-                d_ap = torch.norm(anchor_out[i] - positive_out[i], p=2)
-                mask = candidate_labels != anchor_label[i]
-                if mask.sum() == 0:
-                    chosen_negative = negative_out[i]
-                else:
-                    candidate_emb = candidate_embeddings[mask]
-                    d_an = torch.norm(
-                        anchor_out[i].unsqueeze(0) - candidate_emb, p=2, dim=1
-                    )
-                    semi_hard_mask = (d_an > d_ap) & (d_an < d_ap + margin)
-                    if semi_hard_mask.sum() > 0:
-                        candidate_d_an = d_an[semi_hard_mask]
-                        chosen_idx = torch.argmin(candidate_d_an)
-                        chosen_negative = candidate_emb[semi_hard_mask][chosen_idx]
-                    else:
-                        chosen_negative = negative_out[i]
-                d_an_final = torch.norm(anchor_out[i] - chosen_negative, p=2)
-                loss_i = torch.relu(d_ap - d_an_final + margin)
-                batch_loss += loss_i
-            loss = batch_loss / batch_size
-        else:
-            loss = nn.TripletMarginLoss(margin=margin, p=2)(
-                anchor_out, positive_out, negative_out
-            )
+        loss = range_loss(embeddings, labels, margin)
 
         loss.backward()
         optimizer.step()
 
-
         running_loss += loss.item()
         if batch_idx % 10 == 0:
             print(f"Batch {batch_idx}/{len(dataloader)}: Loss = {loss.item():.4f}")
+            wandb.log({"batch_loss": loss.item()})
 
     avg_loss = running_loss / len(dataloader)
     return avg_loss
@@ -180,21 +157,20 @@ def validate(model, dataloader, criterion, device):
 
     with torch.no_grad():
         for batch in dataloader:
-            anchor, positive, negative, _, _ = batch
+            images, labels = batch
+            images = images.to(device)
+            labels = labels.to(device)
 
-            anchor = anchor.to(device)
-            positive = positive.to(device)
-            negative = negative.to(device)
+            # Получаем эмбеддинги из модели
+            embeddings = model(images)
 
-            anchor_out = model(anchor)
-            positive_out = model(positive)
-            negative_out = model(negative)
-
-            loss = criterion(anchor_out, positive_out, negative_out)
+            # Рассчитываем потерю
+            loss = criterion(embeddings, labels)  # Вычисляем loss для всех эмбеддингов
             running_loss += loss.item()
 
     avg_loss = running_loss / len(dataloader)
     return avg_loss
+
 
 
 def validate_recall_at_k(model, dataloader, k, device):
@@ -204,16 +180,19 @@ def validate_recall_at_k(model, dataloader, k, device):
 
     with torch.no_grad():
         for batch in dataloader:
-            # Из батча берём только anchor и его метку
-            anchor, _, _, labels, _ = batch
-            anchor = anchor.to(device)
-            emb = model(anchor)
-            embeddings_list.append(emb)
-            labels_list.append(labels.to(device))
+            images, labels = batch
+            images = images.to(device)
+            labels = labels.to(device)
+
+            # Получаем эмбеддинги из модели
+            embeddings = model(images)
+            embeddings_list.append(embeddings)
+            labels_list.append(labels)
 
     embeddings_all = torch.cat(embeddings_list, dim=0)
     labels_all = torch.cat(labels_list, dim=0)
 
+    # Рассчитываем расстояния между всеми эмбеддингами
     distances = torch.cdist(embeddings_all, embeddings_all, p=2)
     sorted_indices = torch.argsort(distances, dim=1)
 
@@ -221,7 +200,7 @@ def validate_recall_at_k(model, dataloader, k, device):
     N = embeddings_all.size(0)
     for i in range(N):
         neighbors = sorted_indices[i, 1 : k + 1]
-        if (labels_all[neighbors] == labels_all[i]).any():
+        if (labels_all[neighbors] == labels_all[i]).any():  # Проверяем, есть ли хотя бы один правильный сосед
             hits += 1
 
     recall_at_k = hits / N
@@ -229,15 +208,19 @@ def validate_recall_at_k(model, dataloader, k, device):
 
 
 def main():
-    BATCH_SIZE = 32
+    # Инициализация wandb
+    wandb.init(project="metric-learning")
+
+    # Гиперпараметры
+    BATCH_SIZE = 64
     MARGIN = 0.572356502367154
-    LR = 0.0005312103322276598
+    LR = 0.0005
     EMBEDDING_DIM = 64
-    SEMI_HARD = True
-    NUM_EPOCHS = 2
+    NUM_EPOCHS = 1
 
     USE_FIFTYONE = False
 
+    # Загрузка данных
     val_df = pd.read_csv("/home/kb/CV/ITMO-CV-ADV/src/hw_metric_learning/homework/val.csv")
     val_filenames = set(val_df["filename"].tolist())
 
@@ -245,17 +228,15 @@ def main():
     val_samples = []
 
     if USE_FIFTYONE:
-        # Загружаем датасет Caltech256 через FiftyOne
+        # Загрузка датасета через FiftyOne
         dataset = foz.load_zoo_dataset("caltech256", overwrite=True)
         print(f"Загружен Caltech256: {len(dataset)} образцов")
 
         for sample in dataset:
             filename = os.path.basename(sample.filepath)
-            # Предполагается, что метка хранится в поле ground_truth с ключом "label"
             if "ground_truth" in sample and sample["ground_truth"] is not None:
                 label = sample["ground_truth"]["label"]
             else:
-                # Если поле отсутствует, можно попробовать sample["label"]
                 label = sample.get("label", None)
             if label is None:
                 continue
@@ -265,6 +246,7 @@ def main():
                 train_samples.append((sample.filepath, label))
 
     else:
+        # Загрузка данных с локального пути
         data_dir = Path("/home/kb/CV/ITMO-CV-ADV/src/hw_metric_learning/homework/256_ObjectCategories")
         for sample_folder in data_dir.iterdir():
             for sample_path in sample_folder.iterdir():
@@ -281,12 +263,18 @@ def main():
     print(f"Обучающих сэмплов: {len(train_samples)}")
     print(f"Валидационных сэмплов: {len(val_samples)}")
 
-    # Вычисляем общее отображение меток (label -> числовой индекс)
+    # Логируем количество сэмплов
+    wandb.log({
+        "train_samples": len(train_samples),
+        "val_samples": len(val_samples)
+    })
+
+    # Создаем отображение меток в индексы
     all_labels = {label for _, label in (train_samples + val_samples)}
     labels_sorted = sorted(all_labels)
     label_to_idx = {label: idx for idx, label in enumerate(labels_sorted)}
 
-    # Определяем трансформации для изображений
+    # Трансформации для изображений
     transform = transforms.Compose(
         [
             transforms.Resize((224, 224)),
@@ -295,7 +283,7 @@ def main():
         ]
     )
 
-    # Создаем PyTorch-датасеты
+    # Создаем PyTorch датасеты
     train_dataset = TripletFODataset(
         train_samples, transform=transform, label_to_idx=label_to_idx
     )
@@ -308,35 +296,56 @@ def main():
     )
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
 
+    # Используем GPU, если доступен
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Используем устройство: {device}")
 
+    # Модель
     model = EmbeddingNet(
         backbone_name="levit_128", embedding_dim=EMBEDDING_DIM, pretrained=True
     )
     model.to(device)
 
+    # Логируем модель
+    wandb.watch(model)
+
+    # Оптимизатор и планировщик
     optimizer = optim.Adam(model.parameters(), lr=LR)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
-    criterion = nn.TripletMarginLoss(margin=MARGIN, p=2)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=0, verbose=True)
+
+    # Критерий потерь для Range Loss
+    criterion = range_loss  # Убедитесь, что этот критерий правильно импортирован
 
     k = 1
 
+    # Цикл обучения
     for epoch in range(NUM_EPOCHS):
         print(f"\nЭпоха {epoch + 1}/{NUM_EPOCHS}")
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, device, margin=MARGIN, semi_hard=SEMI_HARD
+            model, train_loader, optimizer, device, margin=MARGIN
         )
         val_loss = validate(model, val_loader, criterion, device)
-        lr = optimizer.param_groups[0]['lr']  # Получаем LR после завершения эпохи
+        lr = optimizer.param_groups[0]['lr']  # Получаем текущий LR
+        wandb.log({"learning_rate": lr, "epoch": epoch + 1})
         scheduler.step(val_loss)
         recall_at_k = validate_recall_at_k(model, val_loader, k, device)
         print(
             f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Recall@{k}: {recall_at_k:.4f}"
         )
 
-        os.makedirs("train_2", exist_ok=True)
-        torch.save(model.state_dict(), f"train_2/model_epoch_{epoch + 1}.pth")
+        # Логируем метрики после каждой эпохи
+        wandb.log({
+            "epoch": epoch + 1,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            f"recall_at_{k}": recall_at_k
+        })
+
+        # Сохраняем модель после каждой эпохи
+        os.makedirs("batch_hard", exist_ok=True)
+        torch.save(model.state_dict(), f"batch_hard/model_epoch_{epoch + 1}.pth")
+
+    wandb.finish()
 
 
 if __name__ == "__main__":

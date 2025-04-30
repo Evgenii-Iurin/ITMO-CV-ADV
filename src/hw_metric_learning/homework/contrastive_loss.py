@@ -13,7 +13,12 @@ import timm
 
 import fiftyone.zoo as foz
 
+import wandb
+
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+from pytorch_metric_learning.losses import TripletMarginLoss
+from pytorch_metric_learning.miners import BatchHardMiner
 
 
 class TripletFODataset(Dataset):
@@ -110,7 +115,17 @@ class EmbeddingNet(nn.Module):
         return x
 
 
-def train_one_epoch(model, dataloader, optimizer, device, margin=1.0, semi_hard=True):
+import torch
+import torch.nn.functional as F
+
+def contrastive_loss(out1, out2, label, margin=1.0):
+    # label == 1 → positive pair; label == 0 → negative pair
+    euclidean_distance = F.pairwise_distance(out1, out2)
+    loss = label * (euclidean_distance ** 2) + \
+           (1 - label) * F.relu(margin - euclidean_distance).pow(2)
+    return loss.mean()
+
+def train_one_epoch(model, dataloader, optimizer, device, margin=1.0):
     model.train()
     running_loss = 0.0
 
@@ -121,8 +136,6 @@ def train_one_epoch(model, dataloader, optimizer, device, margin=1.0, semi_hard=
         anchor = anchor.to(device)
         positive = positive.to(device)
         negative = negative.to(device)
-        anchor_label = anchor_label.to(device)
-        negative_label = negative_label.to(device)
 
         optimizer.zero_grad()
 
@@ -130,49 +143,26 @@ def train_one_epoch(model, dataloader, optimizer, device, margin=1.0, semi_hard=
         positive_out = model(positive)
         negative_out = model(negative)
 
-        if semi_hard:
-            candidate_embeddings = torch.cat([anchor_out, negative_out], dim=0)
-            candidate_labels = torch.cat([anchor_label, negative_label], dim=0)
-            batch_loss = 0.0
-            batch_size = anchor_out.size(0)
+        # Метки: 1 для positive пар, 0 для negative пар
+        pos_labels = torch.ones(anchor_out.size(0)).to(device)
+        neg_labels = torch.zeros(anchor_out.size(0)).to(device)
 
-            for i in range(batch_size):
-                d_ap = torch.norm(anchor_out[i] - positive_out[i], p=2)
-                mask = candidate_labels != anchor_label[i]
-                if mask.sum() == 0:
-                    chosen_negative = negative_out[i]
-                else:
-                    candidate_emb = candidate_embeddings[mask]
-                    d_an = torch.norm(
-                        anchor_out[i].unsqueeze(0) - candidate_emb, p=2, dim=1
-                    )
-                    semi_hard_mask = (d_an > d_ap) & (d_an < d_ap + margin)
-                    if semi_hard_mask.sum() > 0:
-                        candidate_d_an = d_an[semi_hard_mask]
-                        chosen_idx = torch.argmin(candidate_d_an)
-                        chosen_negative = candidate_emb[semi_hard_mask][chosen_idx]
-                    else:
-                        chosen_negative = negative_out[i]
-                d_an_final = torch.norm(anchor_out[i] - chosen_negative, p=2)
-                loss_i = torch.relu(d_ap - d_an_final + margin)
-                batch_loss += loss_i
-            loss = batch_loss / batch_size
-        else:
-            loss = nn.TripletMarginLoss(margin=margin, p=2)(
-                anchor_out, positive_out, negative_out
-            )
+        # Contrastive loss для каждой пары
+        pos_loss = contrastive_loss(anchor_out, positive_out, pos_labels, margin)
+        neg_loss = contrastive_loss(anchor_out, negative_out, neg_labels, margin)
+
+        loss = (pos_loss + neg_loss) / 2.0
 
         loss.backward()
         optimizer.step()
 
-
         running_loss += loss.item()
         if batch_idx % 10 == 0:
             print(f"Batch {batch_idx}/{len(dataloader)}: Loss = {loss.item():.4f}")
+            wandb.log({"batch_loss": loss.item()})
 
     avg_loss = running_loss / len(dataloader)
     return avg_loss
-
 
 def validate(model, dataloader, criterion, device):
     model.eval()
@@ -229,12 +219,14 @@ def validate_recall_at_k(model, dataloader, k, device):
 
 
 def main():
-    BATCH_SIZE = 32
+    wandb.init(project="metric-learning")
+
+    BATCH_SIZE = 128
     MARGIN = 0.572356502367154
-    LR = 0.0005312103322276598
+    LR = 0.0005
     EMBEDDING_DIM = 64
-    SEMI_HARD = True
-    NUM_EPOCHS = 2
+    # SEMI_HARD = True
+    NUM_EPOCHS = 1
 
     USE_FIFTYONE = False
 
@@ -281,6 +273,12 @@ def main():
     print(f"Обучающих сэмплов: {len(train_samples)}")
     print(f"Валидационных сэмплов: {len(val_samples)}")
 
+    # Логируем количество сэмплов
+    wandb.log({
+        "train_samples": len(train_samples),
+        "val_samples": len(val_samples)
+    })
+
     # Вычисляем общее отображение меток (label -> числовой индекс)
     all_labels = {label for _, label in (train_samples + val_samples)}
     labels_sorted = sorted(all_labels)
@@ -316,8 +314,11 @@ def main():
     )
     model.to(device)
 
+    wandb.watch(model)
+
     optimizer = optim.Adam(model.parameters(), lr=LR)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=0, verbose=True)
+
     criterion = nn.TripletMarginLoss(margin=MARGIN, p=2)
 
     k = 1
@@ -325,18 +326,30 @@ def main():
     for epoch in range(NUM_EPOCHS):
         print(f"\nЭпоха {epoch + 1}/{NUM_EPOCHS}")
         train_loss = train_one_epoch(
-            model, train_loader, optimizer, device, margin=MARGIN, semi_hard=SEMI_HARD
+            model, train_loader, optimizer, device, margin=MARGIN, 
+            # semi_hard=SEMI_HARD
         )
         val_loss = validate(model, val_loader, criterion, device)
         lr = optimizer.param_groups[0]['lr']  # Получаем LR после завершения эпохи
+        wandb.log({"learning_rate": lr, "epoch": epoch + 1})
         scheduler.step(val_loss)
         recall_at_k = validate_recall_at_k(model, val_loader, k, device)
         print(
             f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Recall@{k}: {recall_at_k:.4f}"
         )
 
-        os.makedirs("train_2", exist_ok=True)
-        torch.save(model.state_dict(), f"train_2/model_epoch_{epoch + 1}.pth")
+        # Логируем метрики после каждой эпохи
+        wandb.log({
+            "epoch": epoch + 1,
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            f"recall_at_{k}": recall_at_k
+        })
+
+        os.makedirs("batch_hard", exist_ok=True)
+        torch.save(model.state_dict(), f"batch_hard/model_epoch_{epoch + 1}.pth")
+
+    wandb.finish()
 
 
 if __name__ == "__main__":

@@ -74,15 +74,27 @@ def validate_classification(model, base_embeddings, dataloader, device):
         base_embs.append(emb.unsqueeze(0))
     base_embs = torch.cat(base_embs, dim=0)  # размер (num_classes, embedding_dim)
 
+    # with torch.no_grad():
+    #     for images, labels in dataloader:
+    #         images = images.to(device)
+    #         labels = labels.to(device)
+    #         embeddings = model(images)
+    #         dists = torch.cdist(embeddings, base_embs, p=2)
+    #         preds = torch.argmin(dists, dim=1)
+    #         total += labels.size(0)
+    #         correct += (preds == labels).sum().item()
+
     with torch.no_grad():
         for images, labels in dataloader:
             images = images.to(device)
             labels = labels.to(device)
             embeddings = model(images)
-            dists = torch.cdist(embeddings, base_embs, p=2)
+            dists = torch.cdist(embeddings, base_embs.to(device), p=2)
             preds = torch.argmin(dists, dim=1)
+            predicted_labels = torch.tensor(base_labels, device=device)[preds]
+            correct += (predicted_labels == labels).sum().item()
             total += labels.size(0)
-            correct += (preds == labels).sum().item()
+
 
     accuracy = correct / total
     return accuracy
@@ -120,10 +132,10 @@ class Caltech256ClassificationDataset(Dataset):
 def main():
 
     # Путь к сохранённой модели и настройки
-    model_path = "./train_2/model_epoch_2.pth"
+    model_path = "./batch_hard/model_epoch_2.pth"
     backbone_name = "levit_128"
     embedding_dim = 64
-    batch_size = 32
+    batch_size = 64
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Используем устройство: {device}")
@@ -138,7 +150,7 @@ def main():
 
     USE_FIFTYONE = False
 
-    val_df = pd.read_csv("./src/hw_metric_learning/homework/val.csv")
+    val_df = pd.read_csv("/home/kb/CV/ITMO-CV-ADV/src/hw_metric_learning/homework/val.csv")
     val_filenames = set(val_df["filename"].tolist())
 
     train_samples = []
@@ -165,7 +177,7 @@ def main():
                 train_samples.append((sample.filepath, label))
 
     else:
-        data_dir = Path("./src/hw_metric_learning/homework/256_ObjectCategories")
+        data_dir = Path("/home/kb/CV/ITMO-CV-ADV/src/hw_metric_learning/homework/256_ObjectCategories")
         for sample_folder in data_dir.iterdir():
             for sample_path in sample_folder.iterdir():
                 if sample_path.suffix not in [".jpg", ".jpeg", ".png"]:
