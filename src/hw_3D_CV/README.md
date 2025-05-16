@@ -13,3 +13,7 @@ mkdir -p data/sets/nuscenes
 wget https://www.nuscenes.org/data/v1.0-mini.tgz
 tar -xf v1.0-mini.tgz -C data/sets/nuscenes 
 ```
+
+Demo for 3D boxes:
+
+![Demo GIF](imgs\ezgif.com-animated-gif-maker.gif)
