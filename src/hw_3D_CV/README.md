@@ -16,4 +16,4 @@ tar -xf v1.0-mini.tgz -C data/sets/nuscenes
 
 Demo for 3D boxes:
 
-![Demo GIF](imgs\ezgif.com-animated-gif-maker.gif)
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/ezgif.com-animated-gif-maker.gif" alt="Demo" width="400"/>
