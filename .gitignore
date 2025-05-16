@@ -176,3 +176,8 @@ cython_debug/
 # Dataset
 data*
 256_ObjectCategories
+
+# Training stuff
+batch_hard
+train_2
+wandb

@@ -1,0 +1,7 @@
+nuscenes-devkit
+numpy==1.26.4
+ultralytics
+matplotlib
+plotly
+pyquaternion
+scikit-learn

@@ -13,6 +13,8 @@ import timm
 
 import fiftyone.zoo as foz
 
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 
 class TripletFODataset(Dataset):
     def __init__(self, samples, transform=None, label_to_idx=None):
@@ -163,6 +165,7 @@ def train_one_epoch(model, dataloader, optimizer, device, margin=1.0, semi_hard=
         loss.backward()
         optimizer.step()
 
+
         running_loss += loss.item()
         if batch_idx % 10 == 0:
             print(f"Batch {batch_idx}/{len(dataloader)}: Loss = {loss.item():.4f}")
@@ -235,7 +238,7 @@ def main():
 
     USE_FIFTYONE = False
 
-    val_df = pd.read_csv("./src/hw_metric_learning/homework/val.csv")
+    val_df = pd.read_csv("/home/kb/CV/ITMO-CV-ADV/src/hw_metric_learning/homework/val.csv")
     val_filenames = set(val_df["filename"].tolist())
 
     train_samples = []
@@ -262,7 +265,7 @@ def main():
                 train_samples.append((sample.filepath, label))
 
     else:
-        data_dir = Path("./src/hw_metric_learning/homework/256_ObjectCategories")
+        data_dir = Path("/home/kb/CV/ITMO-CV-ADV/src/hw_metric_learning/homework/256_ObjectCategories")
         for sample_folder in data_dir.iterdir():
             for sample_path in sample_folder.iterdir():
                 if sample_path.suffix not in [".jpg", ".jpeg", ".png"]:
@@ -314,6 +317,7 @@ def main():
     model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=LR)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
     criterion = nn.TripletMarginLoss(margin=MARGIN, p=2)
 
     k = 1
@@ -324,6 +328,8 @@ def main():
             model, train_loader, optimizer, device, margin=MARGIN, semi_hard=SEMI_HARD
         )
         val_loss = validate(model, val_loader, criterion, device)
+        lr = optimizer.param_groups[0]['lr']  # Получаем LR после завершения эпохи
+        scheduler.step(val_loss)
         recall_at_k = validate_recall_at_k(model, val_loader, k, device)
         print(
             f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Recall@{k}: {recall_at_k:.4f}"
