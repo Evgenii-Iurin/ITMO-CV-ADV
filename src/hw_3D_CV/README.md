@@ -1,7 +1,7 @@
 This is 3D CV homework.
 Requires python==3.11.12.
 
-For convenience of checking the homework, see notebook called "3D_CV.ipynb".  
+For convenience of checking the homework, see notebook called "3D_CV_notebook.ipynb".  
 
 BEFORE STARTING
 
