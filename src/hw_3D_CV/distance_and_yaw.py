@@ -1,36 +1,27 @@
 from sklearn.decomposition import PCA
 import numpy as np
 
-def estimate_object_distances(results, filtered_points_dict, model, original_image_shape=(900, 1600)):
+def estimate_object_distances(result, frame_points, model, original_image_shape=(900, 1600)):
     """
     For each object detected by YOLO, estimate distance to ego using LiDAR points inside the bounding box.
     Also estimates yaw using PCA (optional).
-
-    Returns:
-        distances_per_frame: dict[frame_id] = list of dicts:
-            { 'class': str, 'confidence': float, 'distance': float, 'yaw_deg': float or None }
     """
-    distances_per_frame = {}
 
-    for frame_id, result in enumerate(results):
-        frame_points = filtered_points_dict.get(frame_id)
-        if frame_points is None or frame_points.shape[0] == 0:
-            distances_per_frame[frame_id] = []
-            continue
+    if frame_points is None or frame_points.shape[0] == 0:
+            distances_per_frame = []
 
-        detections = []
-        boxes = result.boxes
+    detections = []
+    boxes = result.boxes
 
-        if boxes is None or boxes.xyxy is None:
-            distances_per_frame[frame_id] = []
-            continue
+    if boxes is None or boxes.xyxy is None:
+            distances_per_frame = []
 
         # Unpack box data
-        boxes_xyxy = boxes.xyxy.cpu().numpy()
-        class_ids = boxes.cls.cpu().numpy().astype(int)
-        confidences = boxes.conf.cpu().numpy()
+    boxes_xyxy = boxes.xyxy.cpu().numpy()
+    class_ids = boxes.cls.cpu().numpy().astype(int)
+    confidences = boxes.conf.cpu().numpy()
 
-        for i, (box, cls_id, conf) in enumerate(zip(boxes_xyxy, class_ids, confidences)):
+    for i, (box, cls_id, conf) in enumerate(zip(boxes_xyxy, class_ids, confidences)):
             x1, y1, x2, y2 = box
             class_name = model.names[cls_id]
 
@@ -66,6 +57,6 @@ def estimate_object_distances(results, filtered_points_dict, model, original_ima
                 'yaw_deg': float(yaw_deg) if yaw_deg is not None else None,
             })
 
-        distances_per_frame[frame_id] = detections
+    distances_per_snap = detections
 
-    return distances_per_frame
+    return distances_per_snap

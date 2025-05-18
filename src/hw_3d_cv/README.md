@@ -1,7 +1,7 @@
 This is 3D CV homework.
 Requires python==3.11.12.
 
-For convenience of checking the homework, see notebook called "3D_CV.ipynb".  
+For convenience of checking the homework, see notebook called "3D_CV_notebook.ipynb".  
 
 BEFORE STARTING
 
@@ -16,4 +16,20 @@ tar -xf v1.0-mini.tgz -C data/sets/nuscenes
 
 Demo for 3D boxes:
 
-![Demo GIF](imgs\ezgif.com-animated-gif-maker.gif)
+- Front
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/front.gif" alt="Demo" width="400"/>
+
+- Front right
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/front_right.gif" alt="Demo" width="400"/>
+
+- Front left
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/front_left.gif" alt="Demo" width="400"/>
+
+- Back
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/back.gif" alt="Demo" width="400"/>
+
+- Back right
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/back_right.gif" alt="Demo" width="400"/>
+
+- Back left
+<img src="https://github.com/Evgenii-Iurin/ITMO-CV-ADV/blob/3D_CV/src/hw_3D_CV/imgs/back_left.gif" alt="Demo" width="400"/>

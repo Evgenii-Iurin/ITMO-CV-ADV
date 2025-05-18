@@ -1,6 +1,6 @@
 import numpy as np
 
-def filter_lidar_within_masks(projected_points_dict, results, original_img_size=(900, 1600), mask_img_size=(384, 640)):
+def filter_lidar_within_masks(frame_id, camera, projected_points, result, original_img_size=(900, 1600), mask_img_size=(384, 640)):
     """
     Filters projected LiDAR points to only keep those inside segmentation masks.
 
@@ -21,29 +21,27 @@ def filter_lidar_within_masks(projected_points_dict, results, original_img_size=
 
     filtered_points_dict = {}
 
-    for frame_id, (points, result) in enumerate(zip(projected_points_dict.values(), results)):
-        # Scale u, v to YOLO mask resolution
-        u_scaled = (points[:, 0] * scale_x).astype(int)
-        v_scaled = (points[:, 1] * scale_y).astype(int)
-
-        # Clamp to avoid out-of-bounds
-        u_scaled = np.clip(u_scaled, 0, mask_w - 1)
-        v_scaled = np.clip(v_scaled, 0, mask_h - 1)
+      # Scale u, v to YOLO mask resolution
+    u_scaled = (projected_points[:, 0] * scale_x).astype(int)
+    v_scaled = (projected_points[:, 1] * scale_y).astype(int)
+    # Clamp to avoid out-of-bounds
+    u_scaled = np.clip(u_scaled, 0, mask_w - 1)
+    v_scaled = np.clip(v_scaled, 0, mask_h - 1)
 
         # Create global mask from union of all instance masks
-        if result.masks is None:
-            print(f"No masks in frame {frame_id}, skipping.")
-            filtered_points_dict[frame_id] = np.empty((0, 3))
-            continue
+    if result.masks is None:
+        print(f"No masks in frame {camera}, {frame_id}, skipping.")
+        filtered_points = np.empty((0, 3))
 
-        mask_tensor = result.masks.data  # shape: (num_objects, 384, 640)
-        combined_mask = mask_tensor.any(dim=0).cpu().numpy()  # shape: (384, 640), bool
+    else:
+      mask_tensor = result.masks.data  # shape: (num_objects, 384, 640)
+      combined_mask = mask_tensor.any(dim=0).cpu().numpy()  # shape: (384, 640), bool
 
-        # Check which points fall inside the mask
-        inside_mask = combined_mask[v_scaled, u_scaled]  # boolean mask
+    # Check which points fall inside the mask
+      inside_mask = combined_mask[v_scaled, u_scaled]  # boolean mask
 
         # Filter points
-        filtered_points = points[inside_mask]
-        filtered_points_dict[frame_id] = filtered_points
+      filtered_points = projected_points[inside_mask]
+      filtered_points
 
-    return filtered_points_dict
+    return filtered_points
