@@ -1,0 +1,9 @@
+numpy
+matplotlib
+scikit-image
+transforms3d
+tqdm
+opencv-python
+cython
+torch
+wandb
