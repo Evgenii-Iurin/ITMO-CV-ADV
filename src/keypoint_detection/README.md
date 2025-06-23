@@ -1,5 +1,7 @@
 # Virtual Canvas
 
+# APP WITH MEDIAPIPE
+
 demo:
 
 
@@ -37,7 +39,7 @@ poetry shell
     ```
 
 ### Run application
-    python src/hw_7/app.py
+    python src/keypoint_detection/app.py
 
 
 ### How to draw?
